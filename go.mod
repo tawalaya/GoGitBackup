@@ -1,4 +1,4 @@
-module github.com/tawalaya/backup-git
+module github.com/tawalaya/GoGitBackup
 
 go 1.13
 
