@@ -3,6 +3,7 @@ module github.com/tawalaya/GoGitBackup
 go 1.13
 
 require (
+	github.com/cheggaaa/pb/v3 v3.0.3
 	github.com/golang/protobuf v1.3.1 // indirect
 	github.com/google/go-github/v28 v28.1.1
 	github.com/gookit/color v1.2.0

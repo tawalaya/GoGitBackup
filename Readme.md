@@ -87,6 +87,4 @@ The tool is based on go-lang 1.13 and should be easily extendable to other git-a
 ### Planed Features
  - [ ] Enable different git-authentication methods
  - [ ] Enable Error Resolution for failing pulls (clone/overwrite)
- - [ ] Improve the output text to be more helpful
- - [ ] Add a progress bar
 
