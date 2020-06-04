@@ -3,7 +3,7 @@
 This is a utility to download and backup all your GitHub/GitLab accounts to disk.
 It uses the APIs of each provider to find all the reposeories you have access to and clones or pulls them into the same root directory. 
 
-This tool is intended for local backups of all __your__ work.
+This tool is intended for local backups of all __your__ work. The tool uses the git-provider API to list all repositories you have access to and clones them. It is intended to backup work from internal Github/GitLab repositories in case you lose access to them, e.g., in case you leave university.
 
 ## Usage
 The tool is based of a `*.yml` config file where you can define one or more accounts to back up.
@@ -87,6 +87,6 @@ The tool is based on go-lang 1.13 and should be easily extendable to other git-a
 ### Planed Features
  - [ ] Enable different git-authentication methods
  - [ ] Enable Error Resolution for failing pulls (clone/overwrite)
- - [ ] Improve the output text to be more helpful
- - [ ] Add a progress bar
+ - [x] Improve the output text to be more helpful
+ - [x] Add a progress bar
 
