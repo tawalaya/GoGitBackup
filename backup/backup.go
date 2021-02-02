@@ -4,14 +4,16 @@ import (
 	"context"
 	"fmt"
 
-	"gopkg.in/src-d/go-git.v4"
 	"os"
 	"path"
 	"time"
 
+	"gopkg.in/src-d/go-git.v4"
+
 	"github.com/cheggaaa/pb/v3"
 	"github.com/gookit/color"
 
+	"github.com/d5/tengo/v2"
 	"github.com/sirupsen/logrus"
 )
 
@@ -35,28 +37,42 @@ const (
 )
 
 type Account struct {
-	Name     string   `yaml:"name"`
-	Provider Provider `yaml:"provider"`
-	Token    string   `yaml:"token"`
-	Args     []string `yaml:"args"`
+	Name      string   `yaml:"name"`
+	Provider  Provider `yaml:"provider"`
+	Token     string   `yaml:"token"`
+	Args      []string `yaml:"args"`
+	BlackList []string `yaml:"blacklist"`
 }
 
 type Config struct {
 	Repository string    `yaml:"repository"`
 	Accounts   []Account `yaml:"accounts"`
+	FilterList []string  `yaml:"filters"`
 }
 
 type GoGitBackup struct {
 	clients []client
 	config  *Config
 	repos   []Repository
+	filters []*tengo.Script
 }
 
+type Visibility int
+
+const (
+	Public Visibility = iota
+	Private
+	Internal
+)
+
 type Repository struct {
-	CloneUrl  string
-	Name      string
-	Size      int64
-	CreatedAt time.Time
+	CloneUrl   string
+	Name       string
+	Size       int64
+	CreatedAt  time.Time
+	Owner      bool
+	Member     bool
+	Visibility Visibility
 }
 
 type client interface {
@@ -114,9 +130,15 @@ func NewGoBackup(cnf *Config) (*GoGitBackup, error) {
 		}
 	}
 
+	filters := make([]*tengo.Script, 0)
+	for _, filterCode := range cnf.FilterList {
+		filters = append(filters, tengo.NewScript([]byte(filterCode)))
+	}
+
 	return &GoGitBackup{
 		config:  cnf,
 		clients: clients,
+		filters: filters,
 	}, nil
 }
 
@@ -188,13 +210,47 @@ func (c *GoGitBackup) Check() error {
 		repos = append(repos, repo...)
 	}
 
-	c.repos = repos
+	filtered := make([]Repository, 0)
+	for _, repo := range repos {
+		//make this a function...
+		if c.filter(repo) {
+			filtered = append(filtered, repo)
+		}
+	}
+
+	c.repos = filtered
 
 	fmt.Printf("Found the following repositories:\n")
-	fmt.Printf("| %10.10s\t| %10.10s\t| %10.10s\t|\n", "Name", "CreatedAt", "Size")
-	for _, repo := range repos {
-		fmt.Printf("| %10.10s\t| %10.10s\t| %10.0d\t|\n", repo.Name, repo.CreatedAt, repo.Size)
+	fmt.Printf("| %60.10s\t| %10.10s\t| %10.10s\t|\n", "Name", "CreatedAt", "Size")
+
+	for _, repo := range c.repos {
+		fmt.Printf("| %60.10s\t| %10.10s\t| %10.0d\t|\n", repo.Name, repo.CreatedAt, repo.Size)
 	}
 
 	return nil
+}
+
+func (c *GoGitBackup) filter(repo Repository) bool {
+	for _, filter := range c.filters {
+		if !apply(filter, repo) {
+			return false
+		}
+	}
+	return true
+}
+
+func apply(filter *tengo.Script, repo Repository) bool {
+
+	_ = filter.Add("owner", repo.Owner)
+	_ = filter.Add("member", repo.Member)
+	_ = filter.Add("visibility", repo.Visibility)
+	_ = filter.Add("size", repo.Size)
+	_ = filter.Add("name", repo.Name)
+
+	run, err := filter.Run()
+	if err != nil {
+		color.Style{color.FgRed, color.BgDarkGray}.Printf("Failed apply filte rule for %s cause:%+v\n", repo.Name, err)
+	}
+
+	return run.Get("r").Bool()
 }

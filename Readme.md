@@ -52,12 +52,21 @@ For GitHub, you need to specify the following fields in the config file:
 ```
 
 Inorder to obtain a github token follow the this guid ()[]. 
+#### Filters
+Sometimes you want or need to avoid some reposetories, for that GoGitBackup has the ability to add filters.
+Each filter is added to the `filterList` propertie to the config. For the filter implementation we use (Tengo)[github.com/d5/tengo/v2] Script. Each filter is executed in sequence, each filter can use the following variabels.
 
+| name | description |
+| ---- | ----------- |
+| owner | bool - true if the reposetory is owned by the git user. | 
+| member| bool - true if the git user is a member of reposetory. |
+| visibility | int - Public = 0, Private = 1, Internal = 2 | 
+| size | int - size of the reposetory | 
+| name | string - name of the reposetory |
+
+Each script needs to set a variable `r`, for example, `r := owner` checks if the resposetory is owned by the token owner. 
 ##### Planed Features
 
- - [X] Pull private and public repos of a user
- - [ ] Add flag to only select public repos
- - [ ] Add flag to only select repos the user owns
  - [ ] Store all Issues
  - [ ] Store the Wiki
  - [ ] Store all releases
@@ -76,8 +85,6 @@ Inorder to obtain a github token follow the this guid ()[].
  
 ##### Planed Features
 
- - [X] Pull private and public repos of a user
- - [ ] Add a filter for what to select
  - [ ] Store all Issues
  - [ ] Store the Wiki
 

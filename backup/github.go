@@ -3,6 +3,7 @@ package backup
 import (
 	"context"
 	"fmt"
+
 	"github.com/google/go-github/v28/github"
 	"golang.org/x/oauth2"
 
@@ -47,7 +48,7 @@ func (c *_githubClient) List() ([]Repository, error) {
 	})
 
 	if err != nil {
-		log.Debug("failed to list GitHub repositories reason %+v", res)
+		log.Debugf("failed to list GitHub repositories reason %+v", res)
 		return nil, err
 	}
 
@@ -62,12 +63,22 @@ func (c *_githubClient) List() ([]Repository, error) {
 			url = strings.Replace(url, "https://", fmt.Sprintf("https://%s:%s@", c.User, c.Token), -1)
 		}
 
+		visibility := Public
+		if repo.Private != nil && *repo.Private {
+			visibility = Private
+		}
+
+		owner := repo != nil && repo.Owner != nil && repo.Owner.Name != nil && *repo.Owner.Name == c.User
+
 		repoList = append(repoList,
 			Repository{
-				CloneUrl:  url,
-				Name:      repo.GetFullName(),
-				Size:      int64(repo.GetSize()),
-				CreatedAt: repo.GetCreatedAt().UTC(),
+				CloneUrl:   url,
+				Name:       repo.GetFullName(),
+				Size:       int64(repo.GetSize()),
+				CreatedAt:  repo.GetCreatedAt().UTC(),
+				Owner:      owner,
+				Member:     true,
+				Visibility: visibility,
 			})
 
 	}
