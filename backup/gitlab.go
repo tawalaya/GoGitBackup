@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/xanzy/go-gitlab"
 	"github.com/d5/tengo/v2"
+	"github.com/xanzy/go-gitlab"
 )
 
 type _gitlabClient struct {
@@ -19,15 +19,18 @@ type _gitlabClient struct {
 
 func (c *_gitlabClient) Init() error {
 
-	git := gitlab.NewClient(nil, c.Token)
+	ops := make([]gitlab.ClientOptionFunc, 0)
 	if c.BaseURL != "" {
-		err := git.SetBaseURL(c.BaseURL)
-		if err != nil {
-			log.Debugf("failed to set base url to %s, %+v", c.BaseURL, err)
-			return err
-		}
-
+		ops = append(ops, gitlab.WithBaseURL(c.BaseURL))
 	}
+
+	git, err := gitlab.NewClient(c.Token, ops...)
+
+	if err != nil {
+		log.Debugf("failed to create client for %s, %+v", c.BaseURL, err)
+		return err
+	}
+
 	c.client = git
 
 	user, _, err := git.Users.CurrentUser()
@@ -41,67 +44,94 @@ func (c *_gitlabClient) Init() error {
 }
 
 func (c *_gitlabClient) List() ([]Repository, error) {
-	projects, res, err := c.client.Projects.ListProjects(&gitlab.ListProjectsOptions{})
-
-	if err != nil {
-		log.Debugf("failed to list GitHub repositories reason %+v", res)
-		return nil, err
+	opt := &gitlab.ListProjectsOptions{
+		ListOptions: gitlab.ListOptions{
+			PerPage: 10,
+			Page:    1,
+		},
+		Archived: gitlab.Bool(false),
+		//TODO: make this optional
+		Membership: gitlab.Bool(true),
 	}
 
 	repoList := make([]Repository, 0)
-	for _, project := range projects {
-		var size int64
-		if project.Statistics != nil {
-			size = project.Statistics.StorageSize
-		} else {
-			size = -1
+
+	for {
+		projects, resp, err := c.client.Projects.ListProjects(opt)
+
+		if err != nil {
+			log.Debugf("failed to list GitHub repositories reason %+v", resp)
+			return nil, err
 		}
 
-		isMember := false
-		members, _, err := c.client.ProjectMembers.ListAllProjectMembers(project.ID, nil)
-		if err == nil {
-			for _, m := range members {
-				if m.ID == c.user.ID {
-					isMember = true
-					break
-				}
+		for _, project := range projects {
+			r := c.generate(project)
+
+			if filter(r, c.filters) {
+				repoList = append(repoList, r)
 			}
 		}
 
-		visibility := Private
-		switch project.Visibility {
-		case gitlab.PrivateVisibility:
-			visibility = Private
-			break
-		case gitlab.InternalVisibility:
-			visibility = Internal
-			break
-		case gitlab.PublicVisibility:
-			visibility = Public
-			break
+		if resp.CurrentPage >= resp.TotalPages {
+			return repoList, nil
 		}
 
-		r := Repository{
-			CloneUrl:   strings.Replace(project.HTTPURLToRepo, "https://", fmt.Sprintf("https://oauth2:%s@", c.Token), -1),
-			Name:       strings.ReplaceAll(strings.ReplaceAll(project.NameWithNamespace, " / ", "/"), " ", "_"),
-			Size:       size,
-			CreatedAt:  *project.CreatedAt,
-			Owner:      project.Owner != nil && project.Owner.ID == c.user.ID,
-			Member:     isMember,
-			Visibility: visibility,
-		}
+		// Update the page number to get the next page.
+		opt.Page = resp.NextPage
+	}
+}
 
-		if filter(r,c.filters) {
-			repoList = append(repoList,r)
+func (c *_gitlabClient) generate(project *gitlab.Project) Repository {
+
+	var size int64
+	if project.Statistics != nil {
+		size = project.Statistics.StorageSize
+	} else {
+		size = -1
+	}
+
+	isMember := false
+	members, _, err := c.client.ProjectMembers.ListAllProjectMembers(project.ID, nil)
+	if err == nil {
+		for _, m := range members {
+			if m.ID == c.user.ID {
+				isMember = true
+				break
+			}
 		}
 	}
 
-	return repoList, nil
+	visibility := Private
+	switch project.Visibility {
+	case gitlab.PrivateVisibility:
+		visibility = Private
+		break
+	case gitlab.InternalVisibility:
+		visibility = Internal
+		break
+	case gitlab.PublicVisibility:
+		visibility = Public
+		break
+	}
+
+	r := Repository{
+		CloneUrl:     strings.Replace(project.HTTPURLToRepo, "https://", fmt.Sprintf("https://oauth2:%s@", c.Token), -1),
+		Name:         strings.ReplaceAll(strings.ReplaceAll(project.NameWithNamespace, " / ", "/"), " ", "_"),
+		Size:         size,
+		CreatedAt:    *project.CreatedAt,
+		Owner:        project.Owner != nil && project.Owner.ID == c.user.ID,
+		Member:       isMember,
+		Visibility:   visibility,
+		ProviderName: c.name,
+	}
+
+	log.Debugf("got %s %+v %+v %+v", r.Name, r.Member, r.Owner, r.Size)
+	return r
 }
 
 func (c *_gitlabClient) Name() string {
 	return c.name
 }
-func (c *_gitlabClient) RegisterFilter(filters []*tengo.Script)  {
+func (c *_gitlabClient) RegisterFilter(filters []*tengo.Script) {
 	c.filters = filters
 }

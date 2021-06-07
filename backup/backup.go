@@ -37,12 +37,12 @@ const (
 )
 
 type Account struct {
-	Name      string   `yaml:"name"`
-	Provider  Provider `yaml:"provider"`
-	Token     string   `yaml:"token"`
-	Args      []string `yaml:"args"`
-	BlackList []string `yaml:"blacklist"`
-	FilterList []string  `yaml:"filters"`
+	Name       string   `yaml:"name"`
+	Provider   Provider `yaml:"provider"`
+	Token      string   `yaml:"token"`
+	Args       []string `yaml:"args"`
+	BlackList  []string `yaml:"blacklist"`
+	FilterList []string `yaml:"filters"`
 }
 
 type Config struct {
@@ -65,13 +65,14 @@ const (
 )
 
 type Repository struct {
-	CloneUrl   string
-	Name       string
-	Size       int64
-	CreatedAt  time.Time
-	Owner      bool
-	Member     bool
-	Visibility Visibility
+	CloneUrl     string
+	Name         string
+	Size         int64
+	CreatedAt    time.Time
+	Owner        bool
+	Member       bool
+	Visibility   Visibility
+	ProviderName string
 }
 
 type client interface {
@@ -108,32 +109,32 @@ func NewGoBackup(cnf *Config) (*GoGitBackup, error) {
 		for _, filterCode := range account.FilterList {
 			filters = append(filters, tengo.NewScript([]byte(filterCode)))
 		}
-		
+
 		switch account.Provider {
 
-			case GitHub:
-				client := &_githubClient{
-					ctx:   context.Background(),
-					Token: account.Token,
-					name:  account.Name,
-				}
-				if account.Args != nil && len(account.Args) > 0 {
-					client.User = account.Args[0]
-				}
-				client.RegisterFilter(filters)
-				clients = append(clients, client)
+		case GitHub:
+			client := &_githubClient{
+				ctx:   context.Background(),
+				Token: account.Token,
+				name:  account.Name,
+			}
+			if account.Args != nil && len(account.Args) > 0 {
+				client.User = account.Args[0]
+			}
+			client.RegisterFilter(filters)
+			clients = append(clients, client)
 
-			case GitLab:
-				client := &_gitlabClient{
-					Token: account.Token,
-					name:  account.Name,
-				}
-				if account.Args != nil && len(account.Args) > 0 {
-					client.BaseURL = account.Args[0]
-				}
-				client.RegisterFilter(filters)
-				clients = append(clients, client)
-				//TODO: extend here if you add a new provider
+		case GitLab:
+			client := &_gitlabClient{
+				Token: account.Token,
+				name:  account.Name,
+			}
+			if account.Args != nil && len(account.Args) > 0 {
+				client.BaseURL = account.Args[0]
+			}
+			client.RegisterFilter(filters)
+			clients = append(clients, client)
+			//TODO: extend here if you add a new provider
 		}
 	}
 
@@ -211,19 +212,22 @@ func (c *GoGitBackup) Check() error {
 		repos = append(repos, repo...)
 	}
 
+	c.repos = repos
+
 	fmt.Printf("Found the following repositories:\n")
-	fmt.Printf("| %60.10s\t| %10.10s\t| %10.10s\t|\n", "Name", "CreatedAt", "Size")
+	fmt.Printf("| %10.10s\t| %60.10s\t| %10.10s\t| %10.10s\t|\n", "Provider", "Name", "CreatedAt", "Size")
 
 	for _, repo := range c.repos {
-		fmt.Printf("| %60.10s\t| %10.10s\t| %10.0d\t|\n", repo.Name, repo.CreatedAt, repo.Size)
+		fmt.Printf("| %10.10s\t| %60.10s\t| %10.10s\t| %10.0d\t|\n", repo.ProviderName, repo.Name, repo.CreatedAt, repo.Size)
 	}
 
 	return nil
 }
 
-func filter(repo Repository,filters []*tengo.Script) bool {
-	for _, filter := range filters {
+func filter(repo Repository, filters []*tengo.Script) bool {
+	for i, filter := range filters {
 		if !apply(filter, repo) {
+			log.Debugf("%s was filtered due to filter[%d]", repo.Name, i)
 			return false
 		}
 	}
