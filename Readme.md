@@ -67,7 +67,7 @@ In order to obtain a GitHub token, follow this guide  [guid](https://docs.github
 
 ### Filters
 Sometimes you want or need to avoid some repositories. For that GoGitBackup can add filters.
-Each filter is added to the `filterList` property of each provider config. 
+Each filter is added to the `filters` property of each provider config. 
 For the filter implementation we use [Tengo](github.com/d5/tengo/v2) Script. Each filter is executed in sequence. Each filter can use the following variables.
 
 | name | description |
@@ -79,7 +79,15 @@ For the filter implementation we use [Tengo](github.com/d5/tengo/v2) Script. Eac
 | name | string - name of the reposetory |
 
 Each script needs to set a variable `r`; for example, `r := owner` checks if the repository is owned by the token owner. 
-
+```yml
+     - name: <A Name of this account for logging>
+       token: <Gitlab API Token>
+       provider: 1
+       args:
+         - <base-url of your GitLab installation, optional will use gitlab.com by default>
+       filters: 
+         - "r:=owner"
+ ```
 
 ## Development
 The tool is based on go-lang 1.13 and should be easily extendable to other git-as-a-service providers, PR's welcome.
