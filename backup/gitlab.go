@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/xanzy/go-gitlab"
+	"github.com/d5/tengo/v2"
 )
 
 type _gitlabClient struct {
@@ -13,6 +14,7 @@ type _gitlabClient struct {
 	client  *gitlab.Client
 	name    string
 	user    *gitlab.User
+	filters []*tengo.Script
 }
 
 func (c *_gitlabClient) Init() error {
@@ -79,7 +81,7 @@ func (c *_gitlabClient) List() ([]Repository, error) {
 			break
 		}
 
-		repoList = append(repoList, Repository{
+		r := Repository{
 			CloneUrl:   strings.Replace(project.HTTPURLToRepo, "https://", fmt.Sprintf("https://oauth2:%s@", c.Token), -1),
 			Name:       strings.ReplaceAll(strings.ReplaceAll(project.NameWithNamespace, " / ", "/"), " ", "_"),
 			Size:       size,
@@ -87,7 +89,11 @@ func (c *_gitlabClient) List() ([]Repository, error) {
 			Owner:      project.Owner != nil && project.Owner.ID == c.user.ID,
 			Member:     isMember,
 			Visibility: visibility,
-		})
+		}
+
+		if filter(r,c.filters) {
+			repoList = append(repoList,r)
+		}
 	}
 
 	return repoList, nil
@@ -95,4 +101,7 @@ func (c *_gitlabClient) List() ([]Repository, error) {
 
 func (c *_gitlabClient) Name() string {
 	return c.name
+}
+func (c *_gitlabClient) RegisterFilter(filters []*tengo.Script)  {
+	c.filters = filters
 }

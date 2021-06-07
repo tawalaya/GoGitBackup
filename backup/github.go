@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/go-github/v28/github"
 	"golang.org/x/oauth2"
-
+	"github.com/d5/tengo/v2"
 	"strings"
 )
 
@@ -16,6 +16,7 @@ type _githubClient struct {
 	Token  string
 	User   string
 	name   string
+	filters []*tengo.Script
 }
 
 func (c *_githubClient) Name() string {
@@ -36,6 +37,10 @@ func (c *_githubClient) Init() error {
 	c.client = client
 
 	return nil
+}
+
+func (c *_githubClient) RegisterFilter(filters []*tengo.Script)  {
+	c.filters = filters
 }
 
 func (c *_githubClient) List() ([]Repository, error) {
@@ -70,18 +75,21 @@ func (c *_githubClient) List() ([]Repository, error) {
 
 		owner := repo != nil && repo.Owner != nil && repo.Owner.Name != nil && *repo.Owner.Name == c.User
 
-		repoList = append(repoList,
-			Repository{
-				CloneUrl:   url,
-				Name:       repo.GetFullName(),
-				Size:       int64(repo.GetSize()),
-				CreatedAt:  repo.GetCreatedAt().UTC(),
-				Owner:      owner,
-				Member:     true,
-				Visibility: visibility,
-			})
+		r := Repository{
+			CloneUrl:   url,
+			Name:       repo.GetFullName(),
+			Size:       int64(repo.GetSize()),
+			CreatedAt:  repo.GetCreatedAt().UTC(),
+			Owner:      owner,
+			Member:     true,
+			Visibility: visibility,
+		}
+
+		if filter(r, c.filters) {
+			repoList = append(repoList,r)
+		}
 
 	}
-
+	
 	return repoList, nil
 }
