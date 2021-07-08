@@ -238,7 +238,7 @@ func apply(filter *tengo.Script, repo Repository) bool {
 
 	_ = filter.Add("owner", repo.Owner)
 	_ = filter.Add("member", repo.Member)
-	_ = filter.Add("visibility", repo.Visibility)
+	_ = filter.Add("visibility", int(repo.Visibility))
 	_ = filter.Add("size", repo.Size)
 	_ = filter.Add("name", repo.Name)
 

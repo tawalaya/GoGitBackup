@@ -49,9 +49,9 @@ func (c *_gitlabClient) List() ([]Repository, error) {
 			PerPage: 10,
 			Page:    1,
 		},
-		Archived: gitlab.Bool(false),
-		//TODO: make this optional
+		Archived:   gitlab.Bool(false),
 		Membership: gitlab.Bool(true),
+		Statistics: gitlab.Bool(true),
 	}
 
 	repoList := make([]Repository, 0)
