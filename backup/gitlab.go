@@ -46,10 +46,10 @@ func (c *_gitlabClient) Init() error {
 func (c *_gitlabClient) List() ([]Repository, error) {
 	opt := &gitlab.ListProjectsOptions{
 		ListOptions: gitlab.ListOptions{
-			PerPage: 10,
+			PerPage: 20,
 			Page:    1,
 		},
-		Archived:   gitlab.Bool(false),
+		Archived:   gitlab.Bool(true),
 		Membership: gitlab.Bool(true),
 		Statistics: gitlab.Bool(true),
 	}
@@ -65,6 +65,8 @@ func (c *_gitlabClient) List() ([]Repository, error) {
 		}
 
 		for _, project := range projects {
+			log.Debugf("got %s", project.Name)
+
 			r := c.generate(project)
 
 			if filter(r, c.filters) {
@@ -122,6 +124,7 @@ func (c *_gitlabClient) generate(project *gitlab.Project) Repository {
 		Owner:        project.Owner != nil && project.Owner.ID == c.user.ID,
 		Member:       isMember,
 		Visibility:   visibility,
+		Archived:     project.Archived,
 		ProviderName: c.name,
 	}
 

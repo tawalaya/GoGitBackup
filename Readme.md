@@ -68,7 +68,7 @@ In order to obtain a GitHub token, follow this guide  [guid](https://docs.github
 ### Filters
 Sometimes you want or need to avoid some repositories. For that GoGitBackup can add filters.
 Each filter is added to the `filters` property of each provider config. 
-For the filter implementation we use [Tengo](github.com/d5/tengo/v2) Script. Each filter is executed in sequence. Each filter can use the following variables.
+For the filter implementation we use [Tengo](https://github.com/d5/tengo) Script. Each filter is executed in sequence. Each filter can use the following variables.
 
 | name | description |
 | ---- | ----------- |

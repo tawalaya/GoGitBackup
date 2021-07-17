@@ -45,53 +45,68 @@ func (c *_githubClient) RegisterFilter(filters []*tengo.Script) {
 }
 
 func (c *_githubClient) List() ([]Repository, error) {
+	repoList := make([]Repository, 0)
 
-	list, res, err := c.client.Repositories.List(c.ctx, "", &github.RepositoryListOptions{
+	search := &github.RepositoryListOptions{
 		Visibility: "all",
 		//Affiliation: "owner",
 		//Type:        "all",
 		Sort: "created",
-	})
-
-	if err != nil {
-		log.Debugf("failed to list GitHub repositories reason %+v", res)
-		return nil, err
+		ListOptions: github.ListOptions{
+			PerPage: 50,
+			Page:    0,
+		},
 	}
 
-	repoList := make([]Repository, 0)
+	for {
+		list, res, err := c.client.Repositories.List(c.ctx, "", search)
 
-	for _, repo := range list {
-		log.Debugf("got %s size %d", repo.GetFullName(), repo.GetSize())
-
-		url := repo.GetCloneURL()
-
-		if c.User != "" {
-			url = strings.Replace(url, "https://", fmt.Sprintf("https://%s:%s@", c.User, c.Token), -1)
+		if err != nil {
+			log.Debugf("failed to list GitHub repositories reason %+v", res)
+			return nil, err
 		}
 
-		visibility := Public
-		if repo.Private != nil && *repo.Private {
-			visibility = Private
+		for _, repo := range list {
+			log.Debugf("got %s size %d", repo.GetFullName(), repo.GetSize())
+
+			url := repo.GetCloneURL()
+
+			if c.User != "" {
+				url = strings.Replace(url, "https://", fmt.Sprintf("https://%s:%s@", c.User, c.Token), -1)
+			}
+
+			visibility := Public
+			if repo.Private != nil && *repo.Private {
+				visibility = Private
+			}
+
+			owner := repo != nil && repo.Owner != nil && repo.Owner.Name != nil && *repo.Owner.Name == c.User
+
+			archived := repo != nil && repo.Archived != nil && *repo.Archived
+			r := Repository{
+				CloneUrl:     url,
+				Name:         repo.GetFullName(),
+				Size:         int64(repo.GetSize()),
+				CreatedAt:    repo.GetCreatedAt().UTC(),
+				Owner:        owner,
+				Member:       true,
+				Visibility:   visibility,
+				Archived:     archived,
+				ProviderName: c.name,
+			}
+
+			if filter(r, c.filters) {
+				repoList = append(repoList, r)
+			}
+
 		}
 
-		owner := repo != nil && repo.Owner != nil && repo.Owner.Name != nil && *repo.Owner.Name == c.User
-
-		r := Repository{
-			CloneUrl:     url,
-			Name:         repo.GetFullName(),
-			Size:         int64(repo.GetSize()),
-			CreatedAt:    repo.GetCreatedAt().UTC(),
-			Owner:        owner,
-			Member:       true,
-			Visibility:   visibility,
-			ProviderName: c.name,
+		//check if there are more pages...
+		if res.NextPage == 0 {
+			break
 		}
 
-		if filter(r, c.filters) {
-			repoList = append(repoList, r)
-		}
-
+		search.Page = res.NextPage
 	}
-
 	return repoList, nil
 }

@@ -73,6 +73,7 @@ type Repository struct {
 	Member       bool
 	Visibility   Visibility
 	ProviderName string
+	Archived     bool
 }
 
 type client interface {
@@ -215,7 +216,7 @@ func (c *GoGitBackup) Check() error {
 	c.repos = repos
 
 	fmt.Printf("Found the following repositories:\n")
-	fmt.Printf("| %10.10s\t| %60.10s\t| %10.10s\t| %10.10s\t|\n", "Provider", "Name", "CreatedAt", "Size")
+	fmt.Printf("| %10.10s\t| %60.60s\t| %10.10s\t| %10.10s\t|\n", "Provider", "Name", "CreatedAt", "Size")
 
 	for _, repo := range c.repos {
 		fmt.Printf("| %10.10s\t| %60.10s\t| %10.10s\t| %10.0d\t|\n", repo.ProviderName, repo.Name, repo.CreatedAt, repo.Size)
