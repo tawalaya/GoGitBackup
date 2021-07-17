@@ -215,11 +215,13 @@ func (c *GoGitBackup) Check() error {
 
 	c.repos = repos
 
+	const TableFormat = "| %10.10s\t| %60.60s\t| %10.10s\t| %10.10s\t|\n"
+
 	fmt.Printf("Found the following repositories:\n")
-	fmt.Printf("| %10.10s\t| %60.60s\t| %10.10s\t| %10.10s\t|\n", "Provider", "Name", "CreatedAt", "Size")
+	fmt.Printf(TableFormat, "Provider", "Name", "CreatedAt", "Size")
 
 	for _, repo := range c.repos {
-		fmt.Printf("| %10.10s\t| %60.10s\t| %10.10s\t| %10.0d\t|\n", repo.ProviderName, repo.Name, repo.CreatedAt, repo.Size)
+		fmt.Printf(TableFormat, repo.ProviderName, repo.Name, repo.CreatedAt, fmt.Sprintf("%10.0d", repo.Size))
 	}
 
 	return nil
