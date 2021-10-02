@@ -18,13 +18,14 @@
 package main
 
 import (
+	"io/ioutil"
+	"os"
+
 	"github.com/sirupsen/logrus"
 	lib "github.com/tawalaya/GoGitBackup/backup"
 	"github.com/urfave/cli/v2"
 	prefixed "github.com/x-cray/logrus-prefixed-formatter"
 	"gopkg.in/yaml.v2"
-	"io/ioutil"
-	"os"
 )
 
 var (
@@ -62,6 +63,12 @@ func main() {
 				Aliases: []string{"v"},
 				Usage:   "Enables verbose logging",
 			},
+			&cli.StringFlag{
+				Name:     "log-file",
+				Aliases:  []string{"l"},
+				Usage:    "Log to `FILE` as well as stdout",
+				Required: false,
+			},
 		},
 		Commands: []*cli.Command{
 			{
@@ -70,6 +77,7 @@ func main() {
 				Usage:   "performs backup of all git(hub/lab) accounts that can be accessed.",
 				Action: func(c *cli.Context) error {
 					client := preflight(c)
+					defer client.Close()
 					client.Do()
 					return nil
 				},
@@ -80,6 +88,7 @@ func main() {
 				Usage:   "check what we can backup using this utility and also validates your config ;)",
 				Action: func(c *cli.Context) error {
 					client := preflight(c)
+					defer client.Close()
 					return client.Check()
 				},
 			},
@@ -115,7 +124,21 @@ func preflight(c *cli.Context) *lib.GoGitBackup {
 	} else {
 		logger.SetLevel(logrus.ErrorLevel)
 	}
-	client, err := lib.NewGoBackup(&config)
+
+	var logfile *os.File
+	if c.String("log-file") != "" {
+		logfile, err = os.OpenFile(c.String("log-file"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Debugf("failed to open error log file %e", err)
+		}
+	} else {
+		logfile, err = os.OpenFile("error.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Error("failed to open error log file %e", err)
+		}
+	}
+
+	client, err := lib.NewGoBackup(&config, logfile)
 
 	lib.SetLogger(logger)
 	lib.SetLog(log)

@@ -8,12 +8,10 @@ import (
 	"path"
 	"time"
 
-	"gopkg.in/src-d/go-git.v4"
-
 	"github.com/cheggaaa/pb/v3"
-	"github.com/gookit/color"
-
 	"github.com/d5/tengo/v2"
+	"github.com/go-git/go-git/v5"
+	"github.com/gookit/color"
 	"github.com/sirupsen/logrus"
 )
 
@@ -51,9 +49,10 @@ type Config struct {
 }
 
 type GoGitBackup struct {
-	clients []client
-	config  *Config
-	repos   []Repository
+	clients  []client
+	config   *Config
+	repos    []Repository
+	errorLog *os.File
 }
 
 type Visibility int
@@ -83,15 +82,19 @@ type client interface {
 	RegisterFilter(filters []*tengo.Script)
 }
 
-func _info(bar *pb.ProgressBar, msg string) {
-	bar.Set("info", fmt.Sprintf("%30.30s", msg)).Set("warn", "")
+func (c *GoGitBackup) _info(bar *pb.ProgressBar, msg string) {
+	bar.Set("info", fmt.Sprintf("%50.50s", msg)).Set("warn", "")
 }
 
-func _error(bar *pb.ProgressBar, msg string) {
-	bar.Set("warn", fmt.Sprintf("%30.30s", msg)).Set("info", "")
+func (c *GoGitBackup) _error(bar *pb.ProgressBar, msg string) {
+	bar.Set("warn", fmt.Sprintf("%50.50s", msg)).Set("info", "")
+	log.Debugf(msg)
+	if c.errorLog != nil {
+		c.errorLog.WriteString(msg + "\n")
+	}
 }
 
-func NewGoBackup(cnf *Config) (*GoGitBackup, error) {
+func NewGoBackup(cnf *Config, logFile *os.File) (*GoGitBackup, error) {
 	repositoryLocation, err := os.Stat(cnf.Repository)
 	if err != nil {
 		log.Debugf("Failed to obtain fileInfo for %s, %+v", cnf.Repository, err)
@@ -140,8 +143,9 @@ func NewGoBackup(cnf *Config) (*GoGitBackup, error) {
 	}
 
 	return &GoGitBackup{
-		config:  cnf,
-		clients: clients,
+		config:   cnf,
+		clients:  clients,
+		errorLog: logFile,
 	}, nil
 }
 
@@ -161,35 +165,50 @@ func (c *GoGitBackup) Do() {
 
 		if _, err := os.Stat(targetLocation); err != nil {
 			//we assume that the file dose not exist and proceed with pulling
-			_info(bar, fmt.Sprintf("Cloning %s into %s", repo.Name, targetLocation))
+			c._info(bar, fmt.Sprintf("Cloning %s into %s", repo.Name, targetLocation))
 			_, err := git.PlainClone(targetLocation, false, &git.CloneOptions{
 				URL: repo.CloneUrl,
 			})
 
 			if err != nil {
-				_error(bar, fmt.Sprintf("Failed to clone repo for %s", repo.Name))
-				log.Debugf("Failed to clone repo for %s Reason:%+v\n", repo.Name, err)
+				c._error(bar, fmt.Sprintf("Failed to clone repo for %s - %+v", repo.Name, err))
 			}
 		} else {
-			_info(bar, fmt.Sprintf("Pulling %s", targetLocation))
-
+			c._info(bar, fmt.Sprintf("Pulling %s", targetLocation))
 			r, err := git.PlainOpen(targetLocation)
 			if err != nil {
-				_error(bar, fmt.Sprintf("Failed to open repo for %s", repo.Name))
-				log.Debugf("Failed to clone repo for %s Reason:%+v\n", repo.Name, err)
+				c._error(bar, fmt.Sprintf("Failed to open repo for %s - %+v", repo.Name, err))
 				//if we do it strict we should fail here!
 				continue
 			}
-			err = r.Fetch(&git.FetchOptions{})
+			w, err := r.Worktree()
 			if err != nil {
-				_error(bar, fmt.Sprintf("Failed to fetch repo for %s Reason:%+v\n", repo.Name, err))
-				log.Debugf("Failed to fetch repo for %s Reason:%+v\n", repo.Name, err)
+				c._error(bar, fmt.Sprintf("Failed to enter repo for %s -%+v", repo.Name, err))
+				//if we do it strict we should fail here!
+				continue
+			}
+
+			err = w.Pull(&git.PullOptions{
+				Force: true,
+			})
+
+			if err == git.NoErrAlreadyUpToDate {
+				continue
+			}
+			if err != nil {
+				c._error(bar, fmt.Sprintf("Failed to fetch repo for %s Reason %+v", repo.Name, err))
 			}
 		}
 
 	}
 
 	bar.Finish()
+}
+
+func (c *GoGitBackup) Close() {
+	if c.errorLog != nil {
+		c.errorLog.Close()
+	}
 }
 
 func (c *GoGitBackup) Check() error {
