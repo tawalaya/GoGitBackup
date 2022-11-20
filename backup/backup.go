@@ -3,6 +3,7 @@ package backup
 import (
 	"context"
 	"fmt"
+	"github.com/go-git/go-git/v5/config"
 
 	"os"
 	"path"
@@ -90,7 +91,7 @@ func (c *GoGitBackup) _error(bar *pb.ProgressBar, msg string) {
 	bar.Set("warn", fmt.Sprintf("%50.50s", msg)).Set("info", "")
 	log.Debugf(msg)
 	if c.errorLog != nil {
-		c.errorLog.WriteString(msg + "\n")
+		_, _ = c.errorLog.WriteString(msg + "\n")
 	}
 }
 
@@ -175,28 +176,9 @@ func (c *GoGitBackup) Do() {
 			}
 		} else {
 			c._info(bar, fmt.Sprintf("Pulling %s", targetLocation))
-			r, err := git.PlainOpen(targetLocation)
+			err := c.pull(targetLocation)
 			if err != nil {
-				c._error(bar, fmt.Sprintf("Failed to open repo for %s - %+v", repo.Name, err))
-				//if we do it strict we should fail here!
-				continue
-			}
-			w, err := r.Worktree()
-			if err != nil {
-				c._error(bar, fmt.Sprintf("Failed to enter repo for %s -%+v", repo.Name, err))
-				//if we do it strict we should fail here!
-				continue
-			}
-
-			err = w.Pull(&git.PullOptions{
-				Force: true,
-			})
-
-			if err == git.NoErrAlreadyUpToDate {
-				continue
-			}
-			if err != nil {
-				c._error(bar, fmt.Sprintf("Failed to fetch repo for %s Reason %+v", repo.Name, err))
+				c._error(bar, fmt.Sprintf("Failed to clone pull for %s - %+v", repo.Name, err))
 			}
 		}
 
@@ -205,9 +187,32 @@ func (c *GoGitBackup) Do() {
 	bar.Finish()
 }
 
+func (c *GoGitBackup) pull(targetLocation string) error {
+	r, err := git.PlainOpen(targetLocation)
+	if err != nil {
+		return fmt.Errorf("failed to open repo: %+v", err)
+	}
+
+	w, err := r.Worktree()
+	if err != nil {
+		return fmt.Errorf("failed to enter repo: %+v", err)
+	}
+
+	err = w.Pull(&git.PullOptions{
+		Force: true,
+	})
+
+	if err == git.NoErrAlreadyUpToDate {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("failed to fetch repo:%+v", err)
+	}
+	return nil
+}
+
 func (c *GoGitBackup) Close() {
 	if c.errorLog != nil {
-		c.errorLog.Close()
+		_ = c.errorLog.Close()
 	}
 }
 
@@ -241,6 +246,52 @@ func (c *GoGitBackup) Check() error {
 
 	for _, repo := range c.repos {
 		fmt.Printf(TableFormat, repo.ProviderName, repo.Name, repo.CreatedAt, fmt.Sprintf("%10.0d", repo.Size))
+	}
+
+	return nil
+}
+
+func (c *GoGitBackup) Update() error {
+	err := c.Check()
+	if err != nil {
+		return fmt.Errorf("failed to check repo: %+v", err)
+	}
+	for _, repo := range c.repos {
+		targetLocation := path.Join(c.config.Repository, repo.Name)
+
+		if _, err := os.Stat(targetLocation); err != nil {
+			continue
+		} else {
+			r, err := git.PlainOpen(targetLocation)
+			if err != nil {
+				return fmt.Errorf("failed to open repo: %+v", err)
+			}
+
+			cnf, err := r.Config()
+			if err != nil {
+				return fmt.Errorf("failed to open repo: %+v", err)
+			}
+
+			rmf := cnf.Remotes["origin"]
+
+			if rmf.URLs[0] != repo.CloneUrl {
+				log.Infof("%s outdated updateding 'origin'", repo.Name)
+				rmf.Name = "old-remote"
+				cnf.Remotes["old-remote"] = rmf
+				cnf.Remotes["origin"] = &config.RemoteConfig{
+					Name: "origin",
+					URLs: []string{repo.CloneUrl},
+				}
+				err = r.SetConfig(cnf)
+				if err != nil {
+					return fmt.Errorf("failed to set config: %+v", err)
+				}
+			} else {
+				continue
+			}
+
+		}
+
 	}
 
 	return nil

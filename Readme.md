@@ -18,6 +18,7 @@ USAGE:
 COMMANDS:
    backup, b  performs a backup of all git(hub/lab) accounts that can be accessed.
    check, c   check what we can backup using this utility and also validates your config ;)
+   update, u  updates all repos with new remotes based on the config
    help, h    Shows a list of commands or help for one command
 
 GLOBAL OPTIONS:
@@ -26,7 +27,14 @@ GLOBAL OPTIONS:
    --help, -h              show help (default: false)
 
 ```
+### Process
+The tool will iterate all configured GitHub and GitLab accounts and clone all repositories that are accessible to you.
+It will create a directory for each project using the following pattern: `<config.repository>/<accountname>/<project>`.
+If the repository already exists, it will pull the latest changes.
+For pulling we use the provided access token as part of the remote URL. 
+This means you **should not** give other people access to the backup directory, as they can extract your key and access all your repositories.
 
+In case you invalidated a key, you can use the `update` command to update all remotes to the new key. The old remote will remain after the update as `old-remote`.
 ### Config
 To run the utility, you need to specify at least one account and a local repository. 
 An exemplary config file can look like this:

@@ -44,16 +44,36 @@ func (c *_gitlabClient) Init() error {
 }
 
 func (c *_gitlabClient) List() ([]Repository, error) {
+	//grep all active projects
 	opt := &gitlab.ListProjectsOptions{
 		ListOptions: gitlab.ListOptions{
 			PerPage: 20,
 			Page:    1,
 		},
-		Archived:   gitlab.Bool(true),
 		Membership: gitlab.Bool(true),
 		Statistics: gitlab.Bool(true),
 	}
 
+	list, err := c.list(opt)
+
+	if err != nil {
+		return nil, err
+	}
+
+	//enable search of archived projects
+	opt.Page = 1
+	opt.Archived = gitlab.Bool(true)
+
+	archived, err := c.list(opt)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return append(list, archived...), nil
+}
+
+func (c *_gitlabClient) list(opt *gitlab.ListProjectsOptions) ([]Repository, error) {
 	repoList := make([]Repository, 0)
 
 	for {

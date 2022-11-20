@@ -18,7 +18,6 @@
 package main
 
 import (
-	"io/ioutil"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -92,6 +91,16 @@ func main() {
 					return client.Check()
 				},
 			},
+			{
+				Name:    "update",
+				Aliases: []string{"u"},
+				Usage:   "updates all repos with new remotes based on the config",
+				Action: func(c *cli.Context) error {
+					client := preflight(c)
+					defer client.Close()
+					return client.Update()
+				},
+			},
 		},
 	}
 
@@ -104,7 +113,7 @@ func main() {
 
 func preflight(c *cli.Context) *lib.GoGitBackup {
 
-	bytes, err := ioutil.ReadFile(c.String("config"))
+	bytes, err := os.ReadFile(c.String("config"))
 
 	if err != nil {
 		log.Fatalf("failed to read config at %s %+v", c.String("config"), err)
