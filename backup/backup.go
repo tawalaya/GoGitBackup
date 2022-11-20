@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/go-git/go-git/v5/config"
-
 	"os"
 	"path"
 	"time"
@@ -35,6 +34,14 @@ const (
 	//TODO: expand if you have more implementations ;)
 )
 
+type Orphaned int
+
+const (
+	IgnoreOrphaned = iota
+	PullOrphaned
+	RemoveOrphaned
+)
+
 type Account struct {
 	Name       string   `yaml:"name"`
 	Provider   Provider `yaml:"provider"`
@@ -47,6 +54,9 @@ type Account struct {
 type Config struct {
 	Repository string    `yaml:"repository"`
 	Accounts   []Account `yaml:"accounts"`
+
+	OverwriteOnConflict bool     `yaml:"overwrite_on_conflict"`
+	HandleOrphaned      Orphaned `yaml:"handle_orphaned"`
 }
 
 type GoGitBackup struct {
@@ -159,13 +169,14 @@ func (c *GoGitBackup) Do() {
 
 	bar := pb.ProgressBarTemplate(tmpl).New(len(c.repos)).SetWriter(os.Stdout).Start()
 
+	updated := make(map[string]struct{}, 0)
 	for _, repo := range c.repos {
 		bar.Increment()
 
 		targetLocation := path.Join(c.config.Repository, repo.Name)
-
+		updated[targetLocation] = struct{}{}
 		if _, err := os.Stat(targetLocation); err != nil {
-			//we assume that the file dose not exist and proceed with pulling
+			//we assume that the file does not exist and proceed with pulling
 			c._info(bar, fmt.Sprintf("Cloning %s into %s", repo.Name, targetLocation))
 			_, err := git.PlainClone(targetLocation, false, &git.CloneOptions{
 				URL: repo.CloneUrl,
@@ -176,18 +187,91 @@ func (c *GoGitBackup) Do() {
 			}
 		} else {
 			c._info(bar, fmt.Sprintf("Pulling %s", targetLocation))
-			err := c.pull(targetLocation)
+			err := c.pull(repo)
 			if err != nil {
 				c._error(bar, fmt.Sprintf("Failed to clone pull for %s - %+v", repo.Name, err))
 			}
 		}
 
 	}
-
 	bar.Finish()
+
+	if c.config.HandleOrphaned != IgnoreOrphaned {
+		orphaned := c.findOrphaned(updated)
+		if len(orphaned) > 0 {
+			bar = pb.ProgressBarTemplate(tmpl).New(len(c.repos)).SetWriter(os.Stdout).Start()
+			for _, orphan := range orphaned {
+				if c.config.HandleOrphaned == RemoveOrphaned {
+					err := os.RemoveAll(orphan)
+					c._info(bar, fmt.Sprintf("Removed orphaned repo %s - %v", orphan, err))
+				} else if c.config.HandleOrphaned == PullOrphaned {
+					err := _pull(orphan)
+					if err != nil && err != git.NoErrAlreadyUpToDate {
+						c._error(bar, fmt.Sprintf("Failed to pull orphaned repo %s - %v", orphan, err))
+					}
+					c._info(bar, fmt.Sprintf("Pulled orphaned repo %s", orphan))
+				}
+			}
+			bar.Finish()
+		}
+	}
 }
 
-func (c *GoGitBackup) pull(targetLocation string) error {
+func (c *GoGitBackup) findOrphaned(known map[string]struct{}) []string {
+	return find(c.config.Repository, known)
+}
+
+// find all git directories that are not in the known map recursively starting from the given root path
+func find(root string, known map[string]struct{}) []string {
+	orphaned := make([]string, 0)
+	entries, _ := os.ReadDir(root)
+	for _, e := range entries {
+		if e.IsDir() {
+			edir := path.Join(root, e.Name())
+			if _, err := os.Stat(path.Join(edir, ".git")); err != nil {
+				orphaned = append(orphaned, find(edir, known)...)
+			} else {
+				if _, ok := known[edir]; !ok {
+					orphaned = append(orphaned, edir)
+				}
+			}
+		}
+	}
+	return orphaned
+}
+
+func (c *GoGitBackup) pull(repo Repository) error {
+	targetLocation := path.Join(c.config.Repository, repo.Name)
+
+	err := _pull(targetLocation)
+
+	if err == git.NoErrAlreadyUpToDate {
+		return nil
+	} else if err != nil {
+		if c.config.OverwriteOnConflict {
+			log.Infof("Deleting %s due to conflict", targetLocation)
+
+			err = os.Rename(targetLocation, targetLocation+"_conflict")
+			if err != nil {
+				return fmt.Errorf("failed to delete %s due to conflict", targetLocation)
+			}
+
+			_, err := git.PlainClone(targetLocation, false, &git.CloneOptions{URL: repo.CloneUrl})
+			if err != nil {
+				log.Errorf("failed to clone repo %s, reverting. %+v", repo.Name, err)
+				err = os.Rename(targetLocation+"_conflict", targetLocation)
+				if err != nil {
+					return fmt.Errorf("failed to revert check %s_conflict for original", targetLocation)
+				}
+			}
+			log.Infof("Overwritten %s", repo.Name)
+		}
+		return fmt.Errorf("failed to fetch repo:%+v", err)
+	}
+	return nil
+}
+
+func _pull(targetLocation string) error {
 	r, err := git.PlainOpen(targetLocation)
 	if err != nil {
 		return fmt.Errorf("failed to open repo: %+v", err)
@@ -201,13 +285,7 @@ func (c *GoGitBackup) pull(targetLocation string) error {
 	err = w.Pull(&git.PullOptions{
 		Force: true,
 	})
-
-	if err == git.NoErrAlreadyUpToDate {
-		return nil
-	} else if err != nil {
-		return fmt.Errorf("failed to fetch repo:%+v", err)
-	}
-	return nil
+	return err
 }
 
 func (c *GoGitBackup) Close() {
